@@ -14,8 +14,10 @@
  */
 #include "internal/deprecated.h"
 
+#include <stdint.h>
 #include <string.h>
 #include <openssl/err.h>
+#include <openssl/rand.h>
 #include "crypto/bn.h"
 #include "ec_local.h"
 #include "internal/common.h"
@@ -25,6 +27,7 @@
 
 #if !defined(OPENSSL_NO_SM2_PRECOMP)
 extern const BN_ULONG ecp_sm2p256_precomputed[8 * 32 * 256];
+extern const BN_ULONG ecp_sm2p256_blind_precomputed[8 * 256];
 #endif
 
 typedef struct {
@@ -48,6 +51,12 @@ ALIGN32 static const BN_ULONG def_xG[P256_LIMBS] = {
 ALIGN32 static const BN_ULONG def_yG[P256_LIMBS] = {
     0x02df32e52139f0a0, 0xd0a9877cc62a4740, 0x59bdcee36b692153, 0xbc3736a2f4f6779c
 };
+
+/* Order of G. */
+ALIGN32 static const BN_ULONG def_ord[P256_LIMBS] = {
+    0x53bbf40939d54123, 0x7203df6b21c6052b,
+    0xffffffffffffffff, 0xfffffffeffffffff
+};
 #endif
 
 /* p and order for SM2 according to GB/T 32918.5-2017 */
@@ -68,6 +77,11 @@ ALIGN32 static const BN_ULONG ONE[P256_LIMBS] = { 1, 0, 0, 0 };
 void bn_rshift1(BN_ULONG *a);
 /* Sub: r = a - b */
 void bn_sub(BN_ULONG *r, const BN_ULONG *a, const BN_ULONG *b);
+/* Multiply an array by one word, returning the carry. */
+BN_ULONG bn_mul_words(BN_ULONG *r, const BN_ULONG *a, int num, BN_ULONG w);
+/* Add two arrays, returning the carry. */
+BN_ULONG bn_add_words(BN_ULONG *r, const BN_ULONG *a, const BN_ULONG *b,
+    int num);
 /* Modular div by 2: r = a / 2 mod p */
 void ecp_sm2p256_div_by_2(BN_ULONG *r, const BN_ULONG *a);
 /* Modular div by 2: r = a / 2 mod n, where n = ord(p) */
@@ -359,6 +373,41 @@ static void ecp_sm2p256_point_G_mul_by_scalar(P256_POINT *R, const BN_ULONG *k)
         }
     }
 }
+
+/* Compute out = k + blind * ord(G), whose value is at most 264 bits. */
+static void ecp_sm2p256_blind_scalar(BN_ULONG out[P256_LIMBS + 1],
+    const BN_ULONG k[P256_LIMBS], uint8_t blind)
+{
+    out[P256_LIMBS] = bn_mul_words(out, def_ord, P256_LIMBS, blind);
+    out[P256_LIMBS] += bn_add_words(out, out, k, P256_LIMBS);
+}
+
+/*
+ * Compute (k + blind * ord(G)) * G. The original table handles the low
+ * 256 bits and one additional 8-bit window handles bits 256 through 263.
+ */
+static void ecp_sm2p256_point_G_mul_by_scalar_blinded(P256_POINT *R,
+    const BN_ULONG *k, uint8_t blind)
+{
+    unsigned int index;
+    ALIGN32 BN_ULONG scalar[P256_LIMBS + 1];
+    P256_POINT_AFFINE Q;
+
+    ecp_sm2p256_blind_scalar(scalar, k, blind);
+    ecp_sm2p256_point_G_mul_by_scalar(R, scalar);
+
+    index = scalar[P256_LIMBS] & 0xff;
+    if (index) {
+        const BN_ULONG *P = ecp_sm2p256_blind_precomputed
+            + index * 2 * P256_LIMBS;
+
+        memcpy(Q.X, P, sizeof(Q.X));
+        memcpy(Q.Y, P + P256_LIMBS, sizeof(Q.Y));
+        ecp_sm2p256_point_add_affine(R, R, &Q);
+    }
+
+    OPENSSL_cleanse(scalar, sizeof(scalar));
+}
 #endif
 
 /*
@@ -514,6 +563,9 @@ static int ecp_sm2p256_points_mul(const EC_GROUP *group,
     int ret = 0, p_is_infinity = 0;
     const EC_POINT *generator = NULL;
     ALIGN32 BN_ULONG k[P256_LIMBS] = { 0 };
+#if !defined(OPENSSL_NO_SM2_PRECOMP)
+    uint8_t blind = 0;
+#endif
     ALIGN32 union {
         P256_POINT p;
         P256_POINT_AFFINE a;
@@ -539,7 +591,12 @@ static int ecp_sm2p256_points_mul(const EC_GROUP *group,
         }
 #if !defined(OPENSSL_NO_SM2_PRECOMP)
         if (ecp_sm2p256_is_affine_G(generator)) {
-            ecp_sm2p256_point_G_mul_by_scalar(&p.p, k);
+            do {
+                if (RAND_priv_bytes_ex(group->libctx,
+                        (unsigned char *)&blind, sizeof(blind), 0) <= 0)
+                    goto err;
+            } while (blind == 0);
+            ecp_sm2p256_point_G_mul_by_scalar_blinded(&p.p, k, blind);
         } else
 #endif
         {
@@ -581,6 +638,9 @@ static int ecp_sm2p256_points_mul(const EC_GROUP *group,
 
     ret = 1;
 err:
+#if !defined(OPENSSL_NO_SM2_PRECOMP)
+    OPENSSL_cleanse(&blind, sizeof(blind));
+#endif
     BN_CTX_end(ctx);
     return ret;
 }
