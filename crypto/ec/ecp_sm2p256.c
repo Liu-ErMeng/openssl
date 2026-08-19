@@ -328,35 +328,125 @@ static void ecp_sm2p256_point_add(P256_POINT *R, const P256_POINT *P,
 }
 
 #if !defined(OPENSSL_NO_SM2_PRECOMP)
+static void ecp_sm2p256_copy_point_conditional(P256_POINT *R,
+    const P256_POINT *P, BN_ULONG mask)
+{
+    unsigned int i;
+
+    for (i = 0; i < P256_LIMBS; ++i) {
+        R->X[i] = constant_time_select_bn(mask, P->X[i], R->X[i]);
+        R->Y[i] = constant_time_select_bn(mask, P->Y[i], R->Y[i]);
+        R->Z[i] = constant_time_select_bn(mask, P->Z[i], R->Z[i]);
+    }
+}
+
+/*
+ * Point add affine without secret-dependent branches: R <- P + Q.
+ * R and P must not alias. The caller adds fixed-base windows from least to
+ * most significant. Before window i, P's scalar is less than 2^(8*i), while
+ * Q's nonzero scalar is at least 2^(8*i). Even in the final window Q is less
+ * than the SM2 group order, so P and Q cannot be equal group elements.
+ */
+static void ecp_sm2p256_point_add_affine_ct(P256_POINT *R,
+    const P256_POINT *P, const P256_POINT_AFFINE *Q)
+{
+    unsigned int i;
+    BN_ULONG p_is_infinity;
+    P256_POINT q_projective;
+    ALIGN32 BN_ULONG tmp0[P256_LIMBS] = { 0 };
+    ALIGN32 BN_ULONG tmp1[P256_LIMBS] = { 0 };
+    ALIGN32 BN_ULONG tmp2[P256_LIMBS] = { 0 };
+    ALIGN32 BN_ULONG tmp3[P256_LIMBS] = { 0 };
+
+    p_is_infinity = is_zeros(P->Z);
+
+    ecp_sm2p256_sqr(tmp0, P->Z);
+    ecp_sm2p256_mul(tmp1, tmp0, P->Z);
+    ecp_sm2p256_mul(tmp0, tmp0, Q->X);
+    ecp_sm2p256_mul(tmp1, tmp1, Q->Y);
+    ecp_sm2p256_sub(tmp0, tmp0, P->X);
+    ecp_sm2p256_sub(tmp1, tmp1, P->Y);
+
+    ecp_sm2p256_mul(R->Z, P->Z, tmp0);
+    ecp_sm2p256_sqr(tmp2, tmp0);
+    ecp_sm2p256_mul(tmp3, tmp2, tmp0);
+    ecp_sm2p256_mul(tmp2, tmp2, P->X);
+    ecp_sm2p256_add(tmp0, tmp2, tmp2);
+    ecp_sm2p256_sqr(R->X, tmp1);
+    ecp_sm2p256_sub(R->X, R->X, tmp0);
+    ecp_sm2p256_sub(R->X, R->X, tmp3);
+    ecp_sm2p256_sub(tmp2, tmp2, R->X);
+    ecp_sm2p256_mul(tmp2, tmp2, tmp1);
+    ecp_sm2p256_mul(tmp3, tmp3, P->Y);
+    ecp_sm2p256_sub(R->Y, tmp2, tmp3);
+
+    for (i = 0; i < P256_LIMBS; ++i) {
+        q_projective.X[i] = Q->X[i];
+        q_projective.Y[i] = Q->Y[i];
+        q_projective.Z[i] = ONE[i];
+    }
+    ecp_sm2p256_copy_point_conditional(R, &q_projective, p_is_infinity);
+}
+
+/*
+ * Select index * 2^(8*subtable) from one 8-bit precomputation subtable.
+ * Subtable is public, while index is secret and is limited to eight bits.
+ *
+ * For index zero, return table entry 1 as a valid dummy point. The caller
+ * performs the addition and conditionally keeps it only for a nonzero index.
+ * Every call reads all 256 entries in address order.
+ */
+static BN_ULONG ecp_sm2p256_select_point(P256_POINT_AFFINE *R,
+    unsigned int subtable, BN_ULONG index)
+{
+    unsigned int i, j;
+    BN_ULONG mask, zero, selected_index;
+    const BN_ULONG *table = ecp_sm2p256_precomputed
+        + subtable * 256 * 2 * P256_LIMBS;
+    const BN_ULONG *P = table;
+
+    zero = constant_time_is_zero_bn(index);
+    selected_index = constant_time_select_bn(zero, 1, index);
+
+    memcpy(R->X, P, sizeof(R->X));
+    memcpy(R->Y, P + P256_LIMBS, sizeof(R->Y));
+
+    for (i = 1; i < 256; ++i) {
+        P = table + i * 2 * P256_LIMBS;
+        mask = constant_time_eq_bn(selected_index, (BN_ULONG)i);
+        for (j = 0; j < P256_LIMBS; ++j) {
+            R->X[j] = constant_time_select_bn(mask, P[j], R->X[j]);
+            R->Y[j] = constant_time_select_bn(mask, P[j + P256_LIMBS],
+                R->Y[j]);
+        }
+    }
+
+    return ~zero;
+}
+
 /* Base point mul by scalar: k - scalar, G - base point */
 static void ecp_sm2p256_point_G_mul_by_scalar(P256_POINT *R, const BN_ULONG *k)
 {
-    unsigned int i, index, mask = 0xff;
+    unsigned int i;
+    BN_ULONG index, nonzero;
     P256_POINT_AFFINE Q;
+    P256_POINT T;
 
     memset(R, 0, sizeof(P256_POINT));
 
-    if (is_zeros(k))
-        return;
-
-    index = k[0] & mask;
-    if (index) {
-        index = index * 8;
-        memcpy(R->X, ecp_sm2p256_precomputed + index, 32);
-        memcpy(R->Y, ecp_sm2p256_precomputed + index + P256_LIMBS, 32);
-        R->Z[0] = 1;
+    index = k[0] & 0xff;
+    nonzero = ecp_sm2p256_select_point(&Q, 0, index);
+    for (i = 0; i < P256_LIMBS; ++i) {
+        R->X[i] = Q.X[i] & nonzero;
+        R->Y[i] = Q.Y[i] & nonzero;
     }
+    R->Z[0] = nonzero & 1;
 
     for (i = 1; i < 32; ++i) {
-        index = (k[i / 8] >> (8 * (i % 8))) & mask;
-
-        if (index) {
-            index = index + i * 256;
-            index = index * 8;
-            memcpy(Q.X, ecp_sm2p256_precomputed + index, 32);
-            memcpy(Q.Y, ecp_sm2p256_precomputed + index + P256_LIMBS, 32);
-            ecp_sm2p256_point_add_affine(R, R, &Q);
-        }
+        index = (k[i / 8] >> (8 * (i % 8))) & 0xff;
+        nonzero = ecp_sm2p256_select_point(&Q, i, index);
+        ecp_sm2p256_point_add_affine_ct(&T, R, &Q);
+        ecp_sm2p256_copy_point_conditional(R, &T, nonzero);
     }
 }
 #endif
