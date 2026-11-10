@@ -1408,6 +1408,7 @@ static void batch_mul(felem x_out, felem y_out, felem z_out,
     int i, skip;
     unsigned int num, gen_mul = (g_scalar != NULL);
     felem nq[3], tmp[4];
+    widefelem wide_y = { 0 };
     limb bits;
     uint8_t sign, digit;
 
@@ -1479,7 +1480,10 @@ static void batch_mul(felem x_out, felem y_out, felem z_out,
         }
     }
     felem_assign(x_out, nq[0]);
-    felem_assign(y_out, nq[1]);
+    /* An infinity addition may copy an unreduced negative Y. */
+    for (i = 0; i < NLIMBS; i++)
+        wide_y[i] = nq[1][i];
+    felem_reduce(y_out, wide_y);
     felem_assign(z_out, nq[2]);
 }
 

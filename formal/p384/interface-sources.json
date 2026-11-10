@@ -1,0 +1,37 @@
+{
+  "boundary": "Hand-translated value loops; no verified C frontend or heap semantics",
+  "target": "Little endian; uint64_t limbs; BN_BYTES=8; size_t=64; int=32; non-e2k; BN_DEBUG disabled",
+  "functions": {
+    "crypto/ec/ecp_nistp384.c": {
+      "bin48_to_felem": "ded27521e01583a66380827188cad6e9d06638959022b18ef8884ef710af7e87",
+      "felem_to_bin48": "bbc096f77dea49aacd657b484178318e149f7a6cf472543e072cfc1d9d7c20b3",
+      "BN_to_felem": "fec43b1e4fbd8bdbde2968a1987513e983e529f0f1ae4a94da89bd35ef5242fd",
+      "felem_to_BN": "fcb9bb0100f8c30aecce22eacd02b22697a38d44e7a8ca4b22045382d739a43b"
+    },
+    "crypto/bn/bn_lib.c": {
+      "bin2bn": "bd1181fdd8512ab0b5557fe16bb8527e0daaab3b2e941df52623575c1e10332d",
+      "bn2binpad": "1abeb9233191564c28a3622490ab8c1041066c28bfab0af9c797e14b45667288",
+      "BN_lebin2bn": "68487eee428233d5a78cc9b6b06b0613dbfab4cf8d0a514b4ff50df93136ad50",
+      "BN_bn2lebinpad": "9d8c51f5f71fba1925a88a984cacc7b66d3c4d9955df8a744ceeb35827a5fba0",
+      "BN_is_negative": "53cd72e6260d8dc950356289d3e29e5d6c0acfaf326f1bdffdab9a336df922f3",
+      "BN_is_zero": "144b0fa8129fb1a920523169244fb38472e2d32bcbf5e50b08f6966fa76e3c6d",
+      "BN_num_bits_word": "7e1ac47b211a12804ff026014ce0892174ee563cb266ff3811325e5af35a2ce7",
+      "bn_num_bits_consttime": "00d31bbabf0b8495a71e08f448bcfcf98d2ee32361f4e285a46c7aae9c175ac6",
+      "BN_num_bits": "4bf31ecb2f6505b0149440dd953d80c76ed287dce5e2e45ed393375be6252bf8",
+      "bn_correct_top": "5f82155597776e62705f7c2dcd8424688f3c4800d8958cdd8a44a22f815f5810",
+      "bn_expand_internal": "f0fd83b5a459ea16a4923c71ac4e8fd317eabe7a5c93e0d8392ffee743508096"
+    },
+    "include/internal/constant_time.h": {
+      "constant_time_msb": "862709f78700ca0d4f1d7dd5b40bd83960f30ebe2751abbcef7bec828c80aefc",
+      "constant_time_is_zero": "44c499dd680b347e8ca74bdb67fae8d295daa59fa3d4a0800fcc6b52521a38cb",
+      "constant_time_eq": "49e9a27e6516f028a51c59fb1c452c5665238c3acb6ed5c60d68626c5abe5401",
+      "constant_time_eq_int": "88ad20e5bbc47c85c4be6dc21d63b04ca72270dde7ed85c6d69824a8cb89ce7d"
+    },
+    "crypto/bn/bn_local.h": {
+      "header": "cfad039b47f8c0029cda3512d7402b51e9ea06007e4c417b883437b8747c2a82"
+    },
+    "include/openssl/bn.h": {
+      "header": "6680cf7c1192da886e3f5a80ac46852a8b8ec25f0a0978794607ae00dd086b14"
+    }
+  }
+}

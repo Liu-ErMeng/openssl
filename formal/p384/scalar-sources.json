@@ -1,0 +1,18 @@
+{
+  "boundary": "Hand-translated batch schedule; unverified C frontend",
+  "functions": {
+    "crypto/ec/ecp_nistp384.c": {
+      "get_bit": "1713017ca61f0f563893053cd8902ad3af24c7a2cceac7420ce7d859fa080e79",
+      "select_point": "f6512020873c092c1474543ed25eebdbb7dfbb358dff0bb04565c87a64ac9109",
+      "batch_mul": "325f671b00ba66c31f773dbcb3940c2285b2554ddeb46b218869680535415fb4",
+      "point_double": "025f3f5a1bf28e1184c6c07098f6a2938f25dcece93b5c7453f66679137283c5",
+      "point_add": "d0cbf4e8dce41f9218e0cbf6174152d525e93369b5330eda93fae15b5fd83ca4",
+      "ossl_ec_GFp_nistp384_points_mul": "f4b26a9e3f167603eb83d13f979fc5359ece06d0319b65a40e5cbfdf934e1b34",
+      "make_points_affine": "48e3605f8961905a87d8e55deb2836798f33bbfb4b521e4c8652f57db89a746b"
+    },
+    "crypto/ec/ecp_nistputil.c": {
+      "ossl_ec_GFp_nistp_recode_scalar_bits": "5a3b2c329eed666ec69b0abd22c5feaad5b0285914c30ba2112c41d1c2ec9436",
+      "ossl_ec_GFp_nistp_points_make_affine_internal": "6cd261f9a2193156512e991e0d1c8cc0fe2e5f72613fad844a8599a6b5d46357"
+    }
+  }
+}
